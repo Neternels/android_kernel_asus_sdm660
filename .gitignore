@@ -131,3 +131,4 @@ Android.bp
 # NetErnels Team
 neternels/
 neternels_secret.sh
+arch/arm64/configs/*_save
