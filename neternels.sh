@@ -12,8 +12,8 @@ set > /tmp/old_vars.log
     #     |     |---- logs/
     #     |     |---- out/
     #     |     |---- toolchains/
-    #     |     |     |---- clang/
-    #     |     |     |---- gcc/
+    #     |     |     |---- gcc32/
+    #     |     |     |---- gcc64/
     #     |     |     |---- proton/
     #     |     |
     #     |     |---- tools/
@@ -55,19 +55,15 @@ OUT_DIR=${COMPILER_DIR}/out
 
 # Toolchains URL
 PROTON="https://github.com/kdrag0n/proton-clang"
-CLANG="https://android.googlesource.com/platform/prebuilts/clang/\
-host/linux-x86"
-GCC_64="https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/\
-aarch64/aarch64-linux-android-4.9"
-GCC_32="https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/\
-arm/arm-linux-androideabi-4.9"
+GCC_64="https://github.com/mvaisakh/gcc-arm64"
+GCC_32="https://github.com/mvaisakh/gcc-arm"
 
 # AnyKernel URL
 ANYKERNEL="https://github.com/grm34/AnyKernel3-X00TD.git"
 
 # ZipSigner URL
-ZIPSIGNER_URL="https://raw.githubusercontent.com/baalajimaestro/AnyKernel2/\
-master/zipsigner-3.0.jar"
+ZIPSIGNER_URL="https://github.com/Magisk-Modules-Repo/zipsigner/raw/\
+master/bin/zipsigner-3.0-dexed.jar"
 
 # Telegram settings (import sensitive data stored in neternels_secret.sh)
 if [ ! -f neternels_secret.sh ]; then
@@ -180,23 +176,31 @@ _goodbye_msg() {
 # -------------------------------------------------------------------------- #
 
 _send_msg() {
-    curl -fsSL -X POST "${API}"/sendMessage \
-        -d "parse_mode=html" \
-        -d "chat_id=${TELEGRAM_ID}" \
-        -d "text=${1}" \
-        &>/dev/null
+    if [[ ${BUILD_STATUS} == True ]]
+    then
+        curl -fsSL -X POST "${API}"/sendMessage \
+            -d "parse_mode=html" \
+            -d "chat_id=${TELEGRAM_ID}" \
+            -d "text=${1}" \
+            &>/dev/null
+    fi
 }
 
 _send_build() {
-    curl -fsSL -X POST -F document=@"${1}" "${API}"/sendDocument \
-        -F "chat_id=${TELEGRAM_ID}" \
-        -F "disable_web_page_preview=true" \
-        -F "caption=${2}" \
-        &>/dev/null
+    if [[ ${BUILD_STATUS} == True ]]
+    then
+        curl -fsSL -X POST -F document=@"${1}" "${API}"/sendDocument \
+            -F "chat_id=${TELEGRAM_ID}" \
+            -F "disable_web_page_preview=true" \
+            -F "caption=${2}" \
+            &>/dev/null
+    fi
 }
 
 _send_failed() {
-    if [[ ${START_TIME} ]] && [[ ! $BUILD_TIME ]]; then
+    if [[ ${START_TIME} ]] && [[ ! $BUILD_TIME ]] \
+        && [[ ${BUILD_STATUS} == True ]]
+    then
         END_TIME=$(TZ=${TIMEZONE} date +%s)
         BUILD_TIME=$((END_TIME - START_TIME))
         _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
@@ -213,24 +217,38 @@ and $((BUILD_TIME % 60)) seconds</code>"
 _install_dependencies() {
 
     # Set the package manager of the current Linux distribution
-    declare -A PMS=([redhat]=yum [arch]=pacman [gentoo]=emerge
-        [suse]=zypp [fedora]=dnf)
-    OS=(redhat arch gentoo suse fedora)
-    PM=apt-get
-    for x in "${OS[@]}"; do
-        if uname -v | grep -qi "${x}"; then
-            PM=${PMS[${x}]}
+    declare -A PMS=(
+        [aarch64]="_ apt-get install -y"
+        [redhat]="sudo yum install -y"
+        [arch]="sudo pacman -S --noconfirm"
+        [gentoo]="sudo emerge -1 -y"
+        [suse]="sudo zypper install -y"
+        [fedora]="sudo dnf install -y"
+    )
+    OS=(aarch64 redhat arch gentoo suse fedora)
+    for DIST in "${OS[@]}"
+    do
+        case ${DIST} in "aarch64") ARG="-m";; *) ARG="-v"; esac
+        if uname ${ARG} | grep -qi "${DIST}"
+        then
+            IFS=" "
+            PM=${PMS[${DIST}]}
+            read -ra PM <<< "$PM"
             break
+        else
+            PM=(sudo apt-get install -y)
         fi
     done
 
     # Install missing dependencies
-    DEPENDENCIES=(wget curl git zip llvm-ar lld make automake)
-    for PACKAGE in "${DEPENDENCIES[@]}"; do
-        if ! which "${PACKAGE}" &>/dev/null; then
-            PACKAGE=${PACKAGE//-ar/}
-            _note "Package: ${PACKAGE} not found! Installing..."
-            _check sudo "${PM}" install -y "${PACKAGE}"
+    DEPENDENCIES=(wget git zip llvm lld g++ gcc clang)
+    for PACKAGE in "${DEPENDENCIES[@]}"
+    do
+        if ! which "${PACKAGE//llvm/llvm-ar}" &>/dev/null
+        then
+            echo -e \
+                "\n${RED}${PACKAGE} not found. ${GREEN}Installing...${NC}"
+            _check eval "${PM[0]//_/} ${PM[1]} ${PM[3]} ${PM[4]} ${PACKAGE}"
         fi
     done
 }
@@ -245,23 +263,30 @@ _clone_toolchains() {
             fi
             ;;
 
-        CLANG)
-            if [[ ! -d ${TOOLCHAINS_DIR}/clang ]]; then
-                _note "Clang repository not found! Cloning..."
-                _check git clone ${CLANG} "${TOOLCHAINS_DIR}"/clang
-            elif [[ ! -d ${TOOLCHAINS_DIR}/gcc64 ]]; then
-                _note "GCC aarch64 repository not found! Cloning..."
-                _check git clone ${GCC_64} "${TOOLCHAINS_DIR}"/gcc64
-            fi
-            ;;
-
         GCC)
             if [[ ! -d ${TOOLCHAINS_DIR}/gcc32 ]]; then
                 _note "GCC arm repository not found! Cloning..."
                 _check git clone ${GCC_32} "${TOOLCHAINS_DIR}"/gcc32
-            elif [[ ! -d ${TOOLCHAINS_DIR}/gcc64 ]]; then
-                _note "GCC aarch64 repository not found! Cloning..."
+            fi
+            if [[ ! -d ${TOOLCHAINS_DIR}/gcc64 ]]; then
+                _note "GCC arm64 repository not found! Cloning..."
                 _check git clone ${GCC_64} "${TOOLCHAINS_DIR}"/gcc64
+            fi
+            ;;
+
+        PROTONxGCC)
+            if [[ ! -d ${TOOLCHAINS_DIR}/proton ]]; then
+                _note "Proton repository not found! Cloning..."
+                _check git clone --depth=1 ${PROTON} \
+                    "${TOOLCHAINS_DIR}"/proton
+            fi
+            if [[ ! -d ${TOOLCHAINS_DIR}/gcc32 ]]; then
+                _note "GCC arm repository not found! Cloning..."
+                _check git clone --depth=1 ${GCC_32} "${TOOLCHAINS_DIR}"/gcc32
+            fi
+            if [[ ! -d ${TOOLCHAINS_DIR}/gcc64 ]]; then
+                _note "GCC arm64 repository not found! Cloning..."
+                _check git clone --depth=1 ${GCC_64} "${TOOLCHAINS_DIR}"/gcc64
             fi
     esac
 }
@@ -289,12 +314,12 @@ _ask_for_toolchain() {
     case ${CONFIRM} in
         n|N|no|No|NO)
             _note "Select Toolchain compiler:"
-            TOOLCHAINS=(PROTON CLANG GCC)
-            until [[ ${COMPILER} =~ ^[1-2]$ ]]; do
-                _select PROTON CLANG GCC
+            TOOLCHAINS=(PROTON GCC PROTONxGCC)
+            until [[ ${COMPILER} =~ ^[1-3]$ ]]; do
+                _select PROTON GCC PROTONxGCC
                 read -r COMPILER
             done
-            COMPILER=${TOOLCHAINS[${COMPILER}]}
+            COMPILER=${TOOLCHAINS[${COMPILER}-1]}
             ;;
         *)
             COMPILER=${DEFAULT_COMPILER}
@@ -340,6 +365,17 @@ _ask_for_cores() {
     esac
 }
 
+_ask_for_telegram() {
+    _confirm "Do you wish to send build status to NetErnels Team?"
+    case ${CONFIRM} in
+        n|N|no|No|NO)
+            BUILD_STATUS=False
+            ;;
+        *)
+            BUILD_STATUS=True
+    esac
+}
+
 _clean_anykernel() {
     _note "Cleaning AnyKernel folder..."
     UNWANTED=(Image.gz-dtb init.spectrum.rc)
@@ -363,8 +399,8 @@ _make_clean_build() {
     _confirm "Do you wish to make clean build (${LINUX_VERSION})?"
     case ${CONFIRM} in
         n|N|no|No|NO)
-            _note "Make dirty build (this could take a while)..."
-            _check make clean && make mrproper && _clean_anykernel
+            _note "Make dirty build..."
+            _clean_anykernel
             ;;
         *)
             _note "Make clean build (this could take a while)..."
@@ -414,45 +450,73 @@ _make_build() {
     _note "Starting new build for ${CODENAME} (${LINUX_VERSION})..."
     _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
 <code>Started compiling kernel</code>"
+    KBUILD_COMPILER_STRING=\
+$("${TOOLCHAINS_DIR}"/proton/bin/clang --version | head -n 1 | \
+perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
     case ${COMPILER} in
 
         PROTON)
+            export KBUILD_COMPILER_STRING
             export PATH=${TOOLCHAINS_DIR}/proton/bin:/usr/bin:${PATH}
             _check make -j"$(nproc ${CORES})" \
                 O="${OUT_DIR}" \
                 ARCH=arm64 \
                 SUBARCH=arm64 \
                 CROSS_COMPILE=aarch64-linux-gnu- \
-                CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-                CC=clang \
-                AR=llvm-ar \
-                OBJDUMP=llvm-objdump \
-                STRIP=llvm-strip
+				CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+				CC=clang \
+				AR=llvm-ar \
+				OBJDUMP=llvm-objdump \
+				STRIP=llvm-strip \
+                LD=ld.lld \
+                LD_LIBRARY_PATH="${TOOLCHAINS_DIR}"/proton/lib
             ;;
 
-        CLANG)
+        PROTONxGCC)
+            export KBUILD_COMPILER_STRING
             export PATH=\
-${TOOLCHAINS_DIR}/clang/bin:${TOOLCHAINS_DIR}/gcc64/bin:\
+${TOOLCHAINS_DIR}/proton/bin:${TOOLCHAINS_DIR}/gcc64/bin:\
 ${TOOLCHAINS_DIR}/gcc32/bin:/usr/bin:${PATH}
             _check make -j"$(nproc ${CORES})" \
                 O="${OUT_DIR}" \
                 ARCH=arm64 \
                 SUBARCH=arm64 \
                 CC=clang \
+                CROSS_COMPILE=aarch64-linux-gnu- \
+                CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+                AR=llvm-ar \
+                AS=llvm-as \
+                NM=llvm-nm \
+                STRIP=llvm-strip \
+                OBJCOPY=llvm-objcopy \
+                OBJDUMP=llvm-objdump \
+                OBJSIZE=llvm-size \
+                READELF=llvm-readelf \
+                HOSTCC=clang \
+                HOSTCXX=clang++ \
+                HOSTAR=llvm-ar \
                 CLANG_TRIPLE=aarch64-linux-gnu- \
-                CROSS_COMPILE=aarch64-linux-android- \
-                CROSS_COMPILE_ARM32=arm-linux-androideabi-
+                LD=ld.lld \
+                LD_LIBRARY_PATH="${TOOLCHAINS_DIR}"/proton/lib
             ;;
 
         GCC)
+            KBUILD_COMPILER_STRING=\
+$("${TOOLCHAINS_DIR}"/gcc64/bin/aarch64-elf-gcc --version | head -n 1)
+            export KBUILD_COMPILER_STRING
             export PATH=\
 ${TOOLCHAINS_DIR}/gcc32/bin:${TOOLCHAINS_DIR}/gcc64/bin:/usr/bin/:${PATH}
             _check make -j"$(nproc ${CORES})"  \
                 O="${OUT_DIR}" \
                 ARCH=arm64 \
                 SUBARCH=arm64 \
-                CROSS_COMPILE=aarch64-linux-android- \
-                CROSS_COMPILE_ARM32=arm-linux-androideabi-
+                CROSS_COMPILE_ARM32=arm-eabi- \
+				CROSS_COMPILE=aarch64-elf- \
+				AR=aarch64-elf-ar \
+				OBJDUMP=aarch64-elf-objdump \
+				STRIP=aarch64-elf-strip \
+                LD=ld.lld \
+                LD_LIBRARY_PATH="${TOOLCHAINS_DIR}"/proton/lib
     esac
 }
 
@@ -545,6 +609,7 @@ _ask_for_codename
 _ask_for_defconfig
 _ask_for_menuconfig
 _ask_for_cores
+_ask_for_telegram
 
 # Set logs
 TIME=$(TZ=${TIMEZONE} date +%H-%M-%S)
@@ -601,7 +666,7 @@ set | grep -v "RED=\|GREEN=\|YELLOW=\|BLUE=\|CYAN=\|BOLD=\|NC=\|\
 TELEGRAM_ID=\|TELEGRAM_TOKEN=\|TELEGRAM_BOT\|API=\|CHATID=\|BOT=\|TOKEN=\|\
 CONFIRM\|COUNT=\|LENTH=\|NUMBER=\|BASH_ARGC=\|BASH_REMATCH=\|CHAR=\|\
 COLUMNS=\|LINES=\|PIPESTATUS=\|TIME=" > /tmp/new_vars.log
-printf "\n### SELECTED INPUTS ###\n" >> "${LOG}"
+printf "\n### USER INPUT LOGS ###\n" >> "${LOG}"
 diff /tmp/old_vars.log /tmp/new_vars.log | grep -E \
     "^> [A-Z_]{3,18}=" >> "${LOG}"
 
