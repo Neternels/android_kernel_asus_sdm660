@@ -127,3 +127,7 @@ Android.bp
 
 # Huaqin, stop being retard by doing all kernel stuffs on Windows
 !.gitattributes
+
+# NetErnels Team
+neternels/
+neternels_secret.sh
