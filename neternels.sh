@@ -170,8 +170,7 @@ _goodbye_msg() {
 # -------------------------------------------------------------------------- #
 
 _send_msg() {
-    if [[ ${BUILD_STATUS} == True ]]
-    then
+    if [[ ${BUILD_STATUS} == True ]]; then
         curl -fsSL -X POST "${API}"/sendMessage \
             -d "parse_mode=html" \
             -d "chat_id=${TELEGRAM_ID}" \
@@ -181,8 +180,7 @@ _send_msg() {
 }
 
 _send_build() {
-    if [[ ${BUILD_STATUS} == True ]]
-    then
+    if [[ ${BUILD_STATUS} == True ]]; then
         curl -fsSL -X POST -F document=@"${1}" "${API}"/sendDocument \
             -F "chat_id=${TELEGRAM_ID}" \
             -F "disable_web_page_preview=true" \
@@ -193,8 +191,7 @@ _send_build() {
 
 _send_failed() {
     if [[ ${START_TIME} ]] && [[ ! $BUILD_TIME ]] \
-        && [[ ${BUILD_STATUS} == True ]]
-    then
+        && [[ ${BUILD_STATUS} == True ]]; then
         END_TIME=$(TZ=${TIMEZONE} date +%s)
         BUILD_TIME=$((END_TIME - START_TIME))
         _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
@@ -223,8 +220,7 @@ _install_dependencies() {
     for DIST in "${OS[@]}"
     do
         case ${DIST} in "aarch64") ARG="-m";; *) ARG="-v"; esac
-        if uname ${ARG} | grep -qi "${DIST}"
-        then
+        if uname ${ARG} | grep -qi "${DIST}"; then
             IFS=" "
             PM=${PMS[${DIST}]}
             read -ra PM <<< "$PM"
@@ -238,8 +234,7 @@ _install_dependencies() {
     DEPENDENCIES=(wget git zip llvm lld g++ gcc clang)
     for PACKAGE in "${DEPENDENCIES[@]}"
     do
-        if ! which "${PACKAGE//llvm/llvm-ar}" &>/dev/null
-        then
+        if ! which "${PACKAGE//llvm/llvm-ar}" &>/dev/null; then
             echo -e \
                 "\n${RED}${PACKAGE} not found. ${GREEN}Installing...${NC}"
             _check eval "${PM[0]//_/} ${PM[1]} ${PM[3]} ${PM[4]} ${PACKAGE}"
@@ -626,14 +621,18 @@ case ${CONFIRM} in
         sleep 5
 esac
 
-# Send build status to Telegram
+# Build status
 END_TIME=$(TZ=${TIMEZONE} date +%s)
 BUILD_TIME=$((END_TIME - START_TIME))
 _note "Successfully compiled \
 NetErnels-${CODENAME}-${LINUX_VERSION}-${DATE}-signed.zip"
-_send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
+
+# Send build status to Telegram
+if [[ ${BUILD_STATUS} == True ]]; then
+    _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
 <code>Kernel Successfully Compiled after $((BUILD_TIME / 60)) minutes and \
 $((BUILD_TIME % 60)) seconds</code>"
+fi
 
 # Flashable zip
 _create_flashable_zip | tee -a "${LOG}"
