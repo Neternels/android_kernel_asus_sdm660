@@ -16,8 +16,6 @@ set > /tmp/old_vars.log
     #     |     |     |---- gcc64/
     #     |     |     |---- proton/
     #     |     |
-    #     |     |---- tools/
-    #     |     |     |---- zipsigner.jar
     #     |
     #     |---- neternels.sh
     #     |---- neternels_secret.sh
@@ -60,10 +58,6 @@ GCC_32="https://github.com/mvaisakh/gcc-arm"
 
 # AnyKernel URL
 ANYKERNEL="https://github.com/grm34/AnyKernel3-X00TD.git"
-
-# ZipSigner URL
-ZIPSIGNER_URL="https://github.com/Magisk-Modules-Repo/zipsigner/raw/\
-master/bin/zipsigner-3.0-dexed.jar"
 
 # Telegram settings (import sensitive data stored in neternels_secret.sh)
 if [ ! -f neternels_secret.sh ]; then
@@ -298,13 +292,6 @@ _clone_anykernel() {
     fi
 }
 
-_download_zipsigner() {
-    if [[ ! -f ${COMPILER_DIR}/tools/zipsigner.jar ]]; then
-        _note "Zipsigner not found! Downloading..."
-        _check _wget "${COMPILER_DIR}"/tools/zipsigner.jar "${ZIPSIGNER_URL}"
-    fi
-}
-
 # -------------------------------------------------------------------------- #
 # ------------------------- USER CONFIGURATION ----------------------------- #
 # -------------------------------------------------------------------------- #
@@ -382,7 +369,7 @@ _clean_anykernel() {
     for UW in "${UNWANTED[@]}"; do
         rm -f "${COMPILER_DIR}"/AnyKernel/"${UW}"
     done
-    if [ ! -f "${COMPILER_DIR}/builds/NetErnels-${CODENAME}-\
+    if [ ! -f "${COMPILER_DIR}/AnyKernel/NetErnels-${CODENAME}-\
 ${LINUX_VERSION}-${DATE}-signed.zip" ]; then
         rm -f "${COMPILER_DIR}"/AnyKernel/*.zip
     fi
@@ -573,7 +560,7 @@ _sign_flashable_zip() {
     _note "Signing Zip file with AOSP keys..."
     _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
 <code>Signing Zip file with AOSP keys</code>"
-    _check java -jar "${COMPILER_DIR}"/tools/zipsigner.jar \
+    _check java -jar "${COMPILER_DIR}"/AnyKernel/zipsigner-3.0.jar \
 "${COMPILER_DIR}"/AnyKernel/NetErnels-"${CODENAME}"-"${LINUX_VERSION}"-\
 "${DATE}".zip "${COMPILER_DIR}"/builds/NetErnels-"${CODENAME}"-\
 "${LINUX_VERSION}"-"${DATE}"-signed.zip
@@ -620,7 +607,6 @@ printf "NetEnerls Team ㉿ Development is Life\n" > "${LOG}"
 _install_dependencies | tee -a "${LOG}"
 _clone_toolchains | tee -a "${LOG}"
 _clone_anykernel | tee -a "${LOG}"
-_download_zipsigner | tee -a "${LOG}"
 
 # Make
 _note "Make kernel version..."
