@@ -170,8 +170,7 @@ _goodbye_msg() {
 # -------------------------------------------------------------------------- #
 
 _send_msg() {
-    if [[ ${BUILD_STATUS} == True ]]
-    then
+    if [[ ${BUILD_STATUS} == True ]]; then
         curl -fsSL -X POST "${API}"/sendMessage \
             -d "parse_mode=html" \
             -d "chat_id=${TELEGRAM_ID}" \
@@ -181,8 +180,7 @@ _send_msg() {
 }
 
 _send_build() {
-    if [[ ${BUILD_STATUS} == True ]]
-    then
+    if [[ ${BUILD_STATUS} == True ]]; then
         curl -fsSL -X POST -F document=@"${1}" "${API}"/sendDocument \
             -F "chat_id=${TELEGRAM_ID}" \
             -F "disable_web_page_preview=true" \
@@ -192,15 +190,17 @@ _send_build() {
 }
 
 _send_failed() {
-    if [[ ${START_TIME} ]] && [[ ! $BUILD_TIME ]] \
-        && [[ ${BUILD_STATUS} == True ]]
-    then
+    if [[ ${START_TIME} ]] && [[ ! $BUILD_TIME ]]; then
         END_TIME=$(TZ=${TIMEZONE} date +%s)
         BUILD_TIME=$((END_TIME - START_TIME))
-        _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
+        if [[ ${BUILD_STATUS} == True ]]; then
+
+            _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
 Build failed to compile after $((BUILD_TIME / 60)) minutes \
 and $((BUILD_TIME % 60)) seconds</code>"
-        _send_build "${LOG}" "<b>${CODENAME}-${LINUX_VERSION} build logs</b>"
+            _send_build \
+"${LOG}" "<b>${CODENAME}-${LINUX_VERSION} build logs</b>"
+        fi
     fi
 }
 
@@ -220,11 +220,9 @@ _install_dependencies() {
         [fedora]="sudo dnf install -y"
     )
     OS=(aarch64 redhat arch gentoo suse fedora)
-    for DIST in "${OS[@]}"
-    do
+    for DIST in "${OS[@]}"; do
         case ${DIST} in "aarch64") ARG="-m";; *) ARG="-v"; esac
-        if uname ${ARG} | grep -qi "${DIST}"
-        then
+        if uname ${ARG} | grep -qi "${DIST}"; then
             IFS=" "
             PM=${PMS[${DIST}]}
             read -ra PM <<< "$PM"
@@ -236,10 +234,8 @@ _install_dependencies() {
 
     # Install missing dependencies
     DEPENDENCIES=(wget git zip llvm lld g++ gcc clang)
-    for PACKAGE in "${DEPENDENCIES[@]}"
-    do
-        if ! which "${PACKAGE//llvm/llvm-ar}" &>/dev/null
-        then
+    for PACKAGE in "${DEPENDENCIES[@]}"; do
+        if ! which "${PACKAGE//llvm/llvm-ar}" &>/dev/null; then
             echo -e \
                 "\n${RED}${PACKAGE} not found. ${GREEN}Installing...${NC}"
             _check eval "${PM[0]//_/} ${PM[1]} ${PM[3]} ${PM[4]} ${PACKAGE}"
@@ -444,17 +440,18 @@ perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
 
         PROTON)
             export KBUILD_COMPILER_STRING
-            export PATH=${TOOLCHAINS_DIR}/proton/bin:/usr/bin:${PATH}
+            export PATH=\
+${TOOLCHAINS_DIR}/proton/bin:${TOOLCHAINS_DIR}/proton/lib:/usr/bin:${PATH}
             _check make -j"$(nproc ${CORES})" \
                 O="${OUT_DIR}" \
                 ARCH=arm64 \
                 SUBARCH=arm64 \
                 CROSS_COMPILE=aarch64-linux-gnu- \
-				CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-				CC=clang \
-				AR=llvm-ar \
-				OBJDUMP=llvm-objdump \
-				STRIP=llvm-strip \
+                CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+                CC=clang \
+                AR=llvm-ar \
+                OBJDUMP=llvm-objdump \
+                STRIP=llvm-strip \
                 LD=ld.lld \
                 LD_LIBRARY_PATH="${TOOLCHAINS_DIR}"/proton/lib
             ;;
@@ -462,8 +459,8 @@ perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
         PROTONxGCC)
             export KBUILD_COMPILER_STRING
             export PATH=\
-${TOOLCHAINS_DIR}/proton/bin:${TOOLCHAINS_DIR}/gcc64/bin:\
-${TOOLCHAINS_DIR}/gcc32/bin:/usr/bin:${PATH}
+${TOOLCHAINS_DIR}/proton/bin:${TOOLCHAINS_DIR}/proton/lib:\
+${TOOLCHAINS_DIR}/gcc64/bin:${TOOLCHAINS_DIR}/gcc32/bin:/usr/bin:${PATH}
             _check make -j"$(nproc ${CORES})" \
                 O="${OUT_DIR}" \
                 ARCH=arm64 \
@@ -492,16 +489,17 @@ ${TOOLCHAINS_DIR}/gcc32/bin:/usr/bin:${PATH}
 $("${TOOLCHAINS_DIR}"/gcc64/bin/aarch64-elf-gcc --version | head -n 1)
             export KBUILD_COMPILER_STRING
             export PATH=\
-${TOOLCHAINS_DIR}/gcc32/bin:${TOOLCHAINS_DIR}/gcc64/bin:/usr/bin/:${PATH}
+${TOOLCHAINS_DIR}/gcc32/bin:${TOOLCHAINS_DIR}/gcc64/bin:\
+${TOOLCHAINS_DIR}/proton/lib:/usr/bin/:${PATH}
             _check make -j"$(nproc ${CORES})"  \
                 O="${OUT_DIR}" \
                 ARCH=arm64 \
                 SUBARCH=arm64 \
                 CROSS_COMPILE_ARM32=arm-eabi- \
-				CROSS_COMPILE=aarch64-elf- \
-				AR=aarch64-elf-ar \
-				OBJDUMP=aarch64-elf-objdump \
-				STRIP=aarch64-elf-strip \
+                CROSS_COMPILE=aarch64-elf- \
+                AR=aarch64-elf-ar \
+                OBJDUMP=aarch64-elf-objdump \
+                STRIP=aarch64-elf-strip \
                 LD=ld.lld \
                 LD_LIBRARY_PATH="${TOOLCHAINS_DIR}"/proton/lib
     esac
@@ -517,11 +515,11 @@ _create_flashable_zip() {
 <code>Started flashable zip creation</code>"
 
     # Move GZ-DTB to AnyKernel folder
-	_check cp "$OUT_DIR"/arch/arm64/boot/Image.gz-dtb \
+    _check cp "$OUT_DIR"/arch/arm64/boot/Image.gz-dtb \
         "${COMPILER_DIR}"/AnyKernel/
 
     # CD to AnyKernel folder
-	cd "${COMPILER_DIR}"/AnyKernel || (_error "AnyKernel not found!"; _exit)
+    cd "${COMPILER_DIR}"/AnyKernel || (_error "AnyKernel not found!"; _exit)
 
     # Create init.spectrum.rc
     if [[ -f ${KERNEL_DIR}/init.ElectroSpectrum.rc ]]; then
@@ -537,21 +535,21 @@ ${LINUX_VERSION}-${CODENAME}-NetErnels/g" init.spectrum.rc
     fi
 
     # Set anykernel.sh
-	_check sed -i "s/kernel.string=.*/kernel.string=\
+    _check sed -i "s/kernel.string=.*/kernel.string=\
 NetErnels-${CODENAME}/g" anykernel.sh
-	_check sed -i \
+    _check sed -i \
         "s/kernel.for=.*/kernel.for=${KERNEL_VARIANT}/g" anykernel.sh
-	_check sed -i \
+    _check sed -i \
         "s/kernel.compiler=.*/kernel.compiler=${COMPILER}/g" anykernel.sh
-	_check sed -i "s/kernel.made=.*/kernel.made=${BUILDER}/g" anykernel.sh
-	_check sed -i "\
+    _check sed -i "s/kernel.made=.*/kernel.made=${BUILDER}/g" anykernel.sh
+    _check sed -i "\
         s/kernel.version=.*/kernel.version=$LINUX_VERSION/g" anykernel.sh
-	_check sed -i "s/message.word=.*/message.word=NetEnerls ~ \
+    _check sed -i "s/message.word=.*/message.word=NetEnerls ~ \
 Development is Life ~ t.me\/neternels/g" anykernel.sh
-	_check sed -i "s/build.date=.*/build.date=$DATE/g" anykernel.sh
+    _check sed -i "s/build.date=.*/build.date=$DATE/g" anykernel.sh
 
-	# Create flashable zip
-	_check zip -r9 NetErnels-"${CODENAME}"-"${LINUX_VERSION}"-"${DATE}".zip \
+# Create flashable zip
+    _check zip -r9 NetErnels-"${CODENAME}"-"${LINUX_VERSION}"-"${DATE}".zip \
 ./* -x .git README.md ./*placeholder
     cd "${KERNEL_DIR}" || (_error "${KERNEL_DIR} not found!"; _exit)
 }
@@ -626,26 +624,32 @@ case ${CONFIRM} in
         sleep 5
 esac
 
-# Send build status to Telegram
+# Build status
 END_TIME=$(TZ=${TIMEZONE} date +%s)
 BUILD_TIME=$((END_TIME - START_TIME))
 _note "Successfully compiled \
 NetErnels-${CODENAME}-${LINUX_VERSION}-${DATE}-signed.zip"
-_send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
+
+# Send build status to Telegram
+if [[ ${BUILD_STATUS} == True ]]; then
+    _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
 <code>Kernel Successfully Compiled after $((BUILD_TIME / 60)) minutes and \
 $((BUILD_TIME % 60)) seconds</code>"
+fi
 
 # Flashable zip
 _create_flashable_zip | tee -a "${LOG}"
 _sign_flashable_zip | tee -a "${LOG}"
 
 # Upload build on Telegram
-_note "Uploading build on Telegram..."
-MD5=$(md5sum "${COMPILER_DIR}/builds/NetErnels-${CODENAME}-\
+if [[ ${BUILD_STATUS} == True ]]; then
+    _note "Uploading build on Telegram..."
+    MD5=$(md5sum "${COMPILER_DIR}/builds/NetErnels-${CODENAME}-\
 ${LINUX_VERSION}-${DATE}-signed.zip" | cut -d' ' -f1)
-_send_build "${COMPILER_DIR}/builds/NetErnels-${CODENAME}-\
+    _send_build "${COMPILER_DIR}/builds/NetErnels-${CODENAME}-\
 ${LINUX_VERSION}-${DATE}-signed.zip" "<b>${CODENAME}-\
 ${LINUX_VERSION}</b> | <b>MD5 Checksum</b>: <code>${MD5}</code>"
+fi
 
 # Get clean inputs logs
 set | grep -v "RED=\|GREEN=\|YELLOW=\|BLUE=\|CYAN=\|BOLD=\|NC=\|\
