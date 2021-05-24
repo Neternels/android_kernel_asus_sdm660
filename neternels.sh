@@ -515,11 +515,11 @@ _create_flashable_zip() {
 <code>Started flashable zip creation</code>"
 
     # Move GZ-DTB to AnyKernel folder
-_check cp "$OUT_DIR"/arch/arm64/boot/Image.gz-dtb \
+    _check cp "$OUT_DIR"/arch/arm64/boot/Image.gz-dtb \
         "${COMPILER_DIR}"/AnyKernel/
 
     # CD to AnyKernel folder
-cd "${COMPILER_DIR}"/AnyKernel || (_error "AnyKernel not found!"; _exit)
+    cd "${COMPILER_DIR}"/AnyKernel || (_error "AnyKernel not found!"; _exit)
 
     # Create init.spectrum.rc
     if [[ -f ${KERNEL_DIR}/init.ElectroSpectrum.rc ]]; then
@@ -535,21 +535,21 @@ ${LINUX_VERSION}-${CODENAME}-NetErnels/g" init.spectrum.rc
     fi
 
     # Set anykernel.sh
-_check sed -i "s/kernel.string=.*/kernel.string=\
+    _check sed -i "s/kernel.string=.*/kernel.string=\
 NetErnels-${CODENAME}/g" anykernel.sh
-_check sed -i \
+    _check sed -i \
         "s/kernel.for=.*/kernel.for=${KERNEL_VARIANT}/g" anykernel.sh
-_check sed -i \
+    _check sed -i \
         "s/kernel.compiler=.*/kernel.compiler=${COMPILER}/g" anykernel.sh
-_check sed -i "s/kernel.made=.*/kernel.made=${BUILDER}/g" anykernel.sh
-_check sed -i "\
+    _check sed -i "s/kernel.made=.*/kernel.made=${BUILDER}/g" anykernel.sh
+    _check sed -i "\
         s/kernel.version=.*/kernel.version=$LINUX_VERSION/g" anykernel.sh
-_check sed -i "s/message.word=.*/message.word=NetEnerls ~ \
+    _check sed -i "s/message.word=.*/message.word=NetEnerls ~ \
 Development is Life ~ t.me\/neternels/g" anykernel.sh
-_check sed -i "s/build.date=.*/build.date=$DATE/g" anykernel.sh
+    _check sed -i "s/build.date=.*/build.date=$DATE/g" anykernel.sh
 
 # Create flashable zip
-_check zip -r9 NetErnels-"${CODENAME}"-"${LINUX_VERSION}"-"${DATE}".zip \
+_   check zip -r9 NetErnels-"${CODENAME}"-"${LINUX_VERSION}"-"${DATE}".zip \
 ./* -x .git README.md ./*placeholder
     cd "${KERNEL_DIR}" || (_error "${KERNEL_DIR} not found!"; _exit)
 }
