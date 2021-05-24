@@ -549,7 +549,7 @@ Development is Life ~ t.me\/neternels/g" anykernel.sh
     _check sed -i "s/build.date=.*/build.date=$DATE/g" anykernel.sh
 
 # Create flashable zip
-_   check zip -r9 NetErnels-"${CODENAME}"-"${LINUX_VERSION}"-"${DATE}".zip \
+    _check zip -r9 NetErnels-"${CODENAME}"-"${LINUX_VERSION}"-"${DATE}".zip \
 ./* -x .git README.md ./*placeholder
     cd "${KERNEL_DIR}" || (_error "${KERNEL_DIR} not found!"; _exit)
 }
