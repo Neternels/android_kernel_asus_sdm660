@@ -627,8 +627,8 @@ esac
 # Build status
 END_TIME=$(TZ=${TIMEZONE} date +%s)
 BUILD_TIME=$((END_TIME - START_TIME))
-_note "Successfully compiled \
-NetErnels-${CODENAME}-${LINUX_VERSION}-${DATE}-signed.zip"
+_note "Successfully compiled NetErnels-${CODENAME}-${LINUX_VERSION} \
+after $((BUILD_TIME / 60)) minutes and $((BUILD_TIME % 60)) seconds"
 
 # Send build status to Telegram
 if [[ ${BUILD_STATUS} == True ]]; then
