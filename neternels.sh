@@ -152,7 +152,7 @@ _exit() {
         echo -ne "\r\033[K${BLUE}Exit building script in ${SECOND}s...${NC}"
         sleep 1
     done
-    echo && sudo kill 9 $$ && exit
+    echo && kill -9 $$
 }
 
 # Download show progress bar only
@@ -344,7 +344,7 @@ _ask_for_cores() {
             done
             ;;
         *)
-            CORES="--all"
+            CORES=$(nproc --all)
     esac
 }
 
@@ -442,7 +442,7 @@ perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
             export KBUILD_COMPILER_STRING
             export PATH=\
 ${TOOLCHAINS_DIR}/proton/bin:${TOOLCHAINS_DIR}/proton/lib:/usr/bin:${PATH}
-            _check make -j"$(nproc ${CORES})" \
+            _check make -j"${CORES}" \
                 O="${OUT_DIR}" \
                 ARCH=arm64 \
                 SUBARCH=arm64 \
@@ -450,6 +450,8 @@ ${TOOLCHAINS_DIR}/proton/bin:${TOOLCHAINS_DIR}/proton/lib:/usr/bin:${PATH}
                 CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
                 CC=clang \
                 AR=llvm-ar \
+                NM=llvm-nm \
+                OBJCOPY=llvm-objcopy \
                 OBJDUMP=llvm-objdump \
                 STRIP=llvm-strip \
                 LD=ld.lld \
@@ -461,7 +463,7 @@ ${TOOLCHAINS_DIR}/proton/bin:${TOOLCHAINS_DIR}/proton/lib:/usr/bin:${PATH}
             export PATH=\
 ${TOOLCHAINS_DIR}/proton/bin:${TOOLCHAINS_DIR}/proton/lib:\
 ${TOOLCHAINS_DIR}/gcc64/bin:${TOOLCHAINS_DIR}/gcc32/bin:/usr/bin:${PATH}
-            _check make -j"$(nproc ${CORES})" \
+            _check make -j"${CORES}" \
                 O="${OUT_DIR}" \
                 ARCH=arm64 \
                 SUBARCH=arm64 \
@@ -491,7 +493,7 @@ $("${TOOLCHAINS_DIR}"/gcc64/bin/aarch64-elf-gcc --version | head -n 1)
             export PATH=\
 ${TOOLCHAINS_DIR}/gcc32/bin:${TOOLCHAINS_DIR}/gcc64/bin:\
 ${TOOLCHAINS_DIR}/proton/lib:/usr/bin/:${PATH}
-            _check make -j"$(nproc ${CORES})"  \
+            _check make -j"${CORES}"  \
                 O="${OUT_DIR}" \
                 ARCH=arm64 \
                 SUBARCH=arm64 \
@@ -581,7 +583,7 @@ elif [ ! -d kernel ] || [ ! -f AndroidKernel.mk ] || [ ! -f Makefile ]; then
 fi
 
 # Create missing folders
-FOLDERS=(builds tools logs)
+FOLDERS=(builds logs)
 for FOLDER in "${FOLDERS[@]}"; do
     if [[ ! -d ${COMPILER_DIR}/${FOLDER} ]]; then
         mkdir -p "${COMPILER_DIR}"/"${FOLDER}"
