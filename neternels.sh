@@ -146,7 +146,16 @@ _check() {
 
 # Exit with 5s timeout
 _exit() {
-    _send_failed
+    if [[ ${BUILD_STATUS} == True ]] && [[ ${START_TIME} ]] && \
+            [[ ! $BUILD_TIME ]]; then
+        END_TIME=$(TZ=${TIMEZONE} date +%s)
+        BUILD_TIME=$((END_TIME - START_TIME))
+        _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
+Build failed to compile after $((BUILD_TIME / 60)) minutes \
+and $((BUILD_TIME % 60)) seconds</code>"
+        _send_build \
+"${LOG}" "<b>${CODENAME}-${LINUX_VERSION} build logs</b>"
+    fi
     _clean_anykernel
     for (( SECOND=5; SECOND>=1; SECOND-- )); do
         echo -ne "\r\033[K${BLUE}Exit building script in ${SECOND}s...${NC}"
@@ -162,7 +171,7 @@ _wget() {
 
 # Say goodbye
 _goodbye_msg() {
-    echo -e "\n${GREEN}<<< NetEnerls Team ㉿ Development is Life >>>${NC}"
+    echo -e "\n${GREEN}<<< NetEnerls Team @ Development is Life >>>${NC}"
 }
 
 # -------------------------------------------------------------------------- #
@@ -170,38 +179,19 @@ _goodbye_msg() {
 # -------------------------------------------------------------------------- #
 
 _send_msg() {
-    if [[ ${BUILD_STATUS} == True ]]; then
-        curl -fsSL -X POST "${API}"/sendMessage \
-            -d "parse_mode=html" \
-            -d "chat_id=${TELEGRAM_ID}" \
-            -d "text=${1}" \
-            &>/dev/null
-    fi
+    curl -fsSL -X POST "${API}"/sendMessage \
+        -d "parse_mode=html" \
+        -d "chat_id=${TELEGRAM_ID}" \
+        -d "text=${1}" \
+        &>/dev/null
 }
 
 _send_build() {
-    if [[ ${BUILD_STATUS} == True ]]; then
-        curl -fsSL -X POST -F document=@"${1}" "${API}"/sendDocument \
-            -F "chat_id=${TELEGRAM_ID}" \
-            -F "disable_web_page_preview=true" \
-            -F "caption=${2}" \
-            &>/dev/null
-    fi
-}
-
-_send_failed() {
-    if [[ ${START_TIME} ]] && [[ ! $BUILD_TIME ]]; then
-        END_TIME=$(TZ=${TIMEZONE} date +%s)
-        BUILD_TIME=$((END_TIME - START_TIME))
-        if [[ ${BUILD_STATUS} == True ]]; then
-
-            _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
-Build failed to compile after $((BUILD_TIME / 60)) minutes \
-and $((BUILD_TIME % 60)) seconds</code>"
-            _send_build \
-"${LOG}" "<b>${CODENAME}-${LINUX_VERSION} build logs</b>"
-        fi
-    fi
+    curl -fsSL -X POST -F document=@"${1}" "${API}"/sendDocument \
+        -F "chat_id=${TELEGRAM_ID}" \
+        -F "disable_web_page_preview=true" \
+        -F "caption=${2}" \
+        &>/dev/null
 }
 
 # -------------------------------------------------------------------------- #
@@ -394,16 +384,20 @@ _make_clean_build() {
 
 _make_defconfig() {
     _note "Make ${DEFCONFIG} (${LINUX_VERSION})..."
-    _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
+    if [[ ${BUILD_STATUS} == True ]]; then
+        _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
 <code>New build started by ${BUILDER} with ${COMPILER} compiler</code>"
+    fi
     _check make O="${OUT_DIR}" ARCH=arm64 "${DEFCONFIG}"
 }
 
 _make_menuconfig() {
     if [ ${MENUCONFIG} == True ]; then
         _note "Make menuconfig..."
-        _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
+        if [[ ${BUILD_STATUS} == True ]]; then
+            _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
 <code>Started menuconfig</code>"
+        fi
         _check make O="${OUT_DIR}" ARCH=arm64 menuconfig "${OUT_DIR}"/.config
 
         _confirm "Do you wish to save and use ${DEFCONFIG}"
@@ -431,8 +425,10 @@ _make_menuconfig() {
 
 _make_build() {
     _note "Starting new build for ${CODENAME} (${LINUX_VERSION})..."
-    _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
+    if [[ ${BUILD_STATUS} == True ]]; then
+        _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
 <code>Started compiling kernel</code>"
+    fi
     KBUILD_COMPILER_STRING=\
 $("${TOOLCHAINS_DIR}"/proton/bin/clang --version | head -n 1 | \
 perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
@@ -513,8 +509,10 @@ ${TOOLCHAINS_DIR}/proton/lib:/usr/bin/:${PATH}
 
 _create_flashable_zip() {
     _note "Creating ${LINUX_VERSION}-${CODENAME}-NetErnels-${DATE}.zip..."
-    _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
+    if [[ ${BUILD_STATUS} == True ]]; then
+        _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
 <code>Started flashable zip creation</code>"
+    fi
 
     # Move GZ-DTB to AnyKernel folder
     _check cp "$OUT_DIR"/arch/arm64/boot/Image.gz-dtb \
@@ -558,8 +556,10 @@ Development is Life ~ t.me\/neternels/g" anykernel.sh
 
 _sign_flashable_zip() {
     _note "Signing Zip file with AOSP keys..."
-    _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
+    if [[ ${BUILD_STATUS} == True ]]; then
+        _send_msg "<b>${CODENAME}-${LINUX_VERSION}</b> | \
 <code>Signing Zip file with AOSP keys</code>"
+    fi
     _check java -jar "${COMPILER_DIR}"/AnyKernel/zipsigner-3.0.jar \
 "${COMPILER_DIR}"/AnyKernel/NetErnels-"${CODENAME}"-"${LINUX_VERSION}"-\
 "${DATE}".zip "${COMPILER_DIR}"/builds/NetErnels-"${CODENAME}"-\
@@ -601,7 +601,7 @@ _ask_for_telegram
 # Set logs
 TIME=$(TZ=${TIMEZONE} date +%H-%M-%S)
 LOG=${COMPILER_DIR}/logs/${CODENAME}_${DATE}_${TIME}.log
-printf "NetEnerls Team ㉿ Development is Life\n" > "${LOG}"
+printf "NetEnerls Team @ Development is Life\n" > "${LOG}"
 
 # Install and clone requirements
 _install_dependencies | tee -a "${LOG}"
