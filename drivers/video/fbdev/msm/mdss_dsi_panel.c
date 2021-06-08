@@ -27,23 +27,18 @@
 #include "mdss_dba_utils.h"
 #include "mdss_debug.h"
 #include "mdss_livedisplay.h"
-#ifdef CONFIG_MACH_ASUS_SDM660
+/* Huaqin modify for Modification sequence by qimaokang at 2018/05/31 start */
 #include "mdss_panel.h"
-#endif
+/* Huaqin modify for Modification sequence by qimaokang at 2018/05/31 end */
 
 #define DT_CMD_HDR 6
 #define MIN_REFRESH_RATE 48
 #define DEFAULT_MDP_TRANSFER_TIME 14000
 
 #define VSYNC_DELAY msecs_to_jiffies(17)
-
-#ifdef CONFIG_MACH_ASUS_SDM660
+/* Huaqin modify for Modification sequence by qimaokang at 2018/05/31 start */
 extern char mdss_mdp_panel[MDSS_MAX_PANEL_LEN];
-#ifdef CONFIG_MACH_ASUS_X01BD
-extern bool shutdown_flag;
-#endif
-#endif
-
+/* Huaqin modify for Modification sequence by qimaokang at 2018/05/31 end */
 DEFINE_LED_TRIGGER(bl_led_trigger);
 
 void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
@@ -192,11 +187,11 @@ static void mdss_dsi_panel_apply_settings(struct mdss_dsi_ctrl_pdata *ctrl,
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
 }
 
-#ifndef CONFIG_MACH_ASUS_SDM660
-static
-#endif
+/* Huaqin modify for ZQL1650 by xieguoqiang at 2018/02/09 start */
+//static
 void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
 			struct dsi_panel_cmds *pcmds, u32 flags)
+/* Huaqin modify for ZQL1650 by xieguoqiang at 2018/02/09 end */
 {
 	struct dcs_cmd_req cmdreq;
 	struct mdss_panel_info *pinfo;
@@ -386,9 +381,8 @@ ret:
 	return rc;
 }
 
-#if defined(CONFIG_MACH_ASUS_X00TD) && defined(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_X00TD)
 extern long syna_gesture_mode;
-#endif
+
 int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 {
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
@@ -514,35 +508,15 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			gpio_free(ctrl_pdata->disp_en_gpio);
 		}
 
-#if defined(CONFIG_MACH_ASUS_X00TD) && defined(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_X00TD)
-		if (strstr(mdss_mdp_panel,
-			"qcom,mdss_dsi_td4310_1080p_video_txd") &&
-			syna_gesture_mode == 0)
-#endif
+		printk("qimk panel name:%s\n",mdss_mdp_panel);
+		if(strstr(mdss_mdp_panel,"qcom,mdss_dsi_td4310_1080p_video_txd")) {
+			if(!syna_gesture_mode)
+			    gpio_set_value((ctrl_pdata->rst_gpio), 0);		
+			else
+			    gpio_set_value((ctrl_pdata->rst_gpio), 1);
+		}else
+		     gpio_set_value((ctrl_pdata->rst_gpio), 1);
 
-#ifdef CONFIG_MACH_ASUS_X01BD
-		if (shutdown_flag) {
-			gpio_set_value((ctrl_pdata->rst_gpio), 0);
-			rc = gpio_request_one(ctrl_pdata->tp_rst_gpio,
-						GPIOF_OUT_INIT_LOW,
-						"himax-tp-rst");
-			if (rc) {
-				pr_err("%s:Failed to request NVT-tp-rst GPIO\n",
-					__func__);
-				gpio_free(ctrl_pdata->tp_rst_gpio);
-				gpio_request_one(ctrl_pdata->tp_rst_gpio,
-							GPIOF_OUT_INIT_LOW,
-							"himax-tp-rst");
-			}
-		}
-#else
-		gpio_set_value((ctrl_pdata->rst_gpio), 0);
-#endif
-
-#if defined(CONFIG_MACH_ASUS_X00TD) && defined(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_X00TD)
-		else
-			gpio_set_value((ctrl_pdata->rst_gpio), 1);
-#endif
 		gpio_free(ctrl_pdata->rst_gpio);
 		if (gpio_is_valid(ctrl_pdata->lcd_mode_sel_gpio)) {
 			gpio_set_value(ctrl_pdata->lcd_mode_sel_gpio, 0);
@@ -1860,9 +1834,12 @@ static bool mdss_dsi_cmp_panel_reg_v2(struct mdss_dsi_ctrl_pdata *ctrl)
 				(unsigned int)ctrl->status_value[group + i]);
 			MDSS_XLOG(ctrl->ndx, ctrl->return_buf[i],
 					ctrl->status_value[group + i]);
+/* Huaqin modify for ZQL1650 by xieguoqiang at 2018/02/09 start */
 			if (ctrl->return_buf[i] !=
-				ctrl->status_value[group + i])
+				ctrl->status_value[group + i]){
+/* Huaqin modify for ZQL1650 by xieguoqiang at 2018/02/09 end */
 				break;
+			}
 		}
 
 		if (i == len)
@@ -2079,8 +2056,14 @@ static void mdss_dsi_parse_esd_params(struct device_node *np,
 	pinfo->esd_check_enabled = of_property_read_bool(np,
 		"qcom,esd-check-enabled");
 
+	/* Huaqin modify to disable ESD in factory version by xieguoqiang 20170201 start */
+//#ifdef HQ_BUILD_FACTORY
+//	return;
+//#else
 	if (!pinfo->esd_check_enabled)
 		return;
+//#endif
+	/* Huaqin modify to disable ESD in factory version by xieguoqiang 20170201 end */
 
 	ctrl->status_mode = ESD_MAX;
 	rc = of_property_read_string(np,
@@ -2987,12 +2970,10 @@ static int mdss_panel_parse_dt(struct device_node *np,
 
 	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->off_cmds,
 		"qcom,mdss-dsi-off-command", "qcom,mdss-dsi-off-command-state");
-
-#ifdef CONFIG_MACH_ASUS_SDM660
+/* Huaqin modify for ZQL1650 by xieguoqiang at 2018/02/09 start */
 	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->esd_recover_cmds,
 		"qcom,mdss-dsi-esd-recover-command", "qcom,mdss-dsi-esd-recover-command-state");
-#endif
-
+/* Huaqin modify for ZQL1650 by xieguoqiang at 2018/02/09 end */
 	rc = of_property_read_u32(np, "qcom,adjust-timer-wakeup-ms", &tmp);
 	pinfo->adjust_timer_delay_ms = (!rc ? tmp : 0);
 

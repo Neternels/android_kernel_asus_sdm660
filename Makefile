@@ -1,6 +1,6 @@
 VERSION = 4
 PATCHLEVEL = 4
-SUBLEVEL = 269
+SUBLEVEL = 271
 EXTRAVERSION =
 NAME = Blurry Fish Butt
 
@@ -670,7 +670,8 @@ LTO_CFLAGS    += -floop-interchange -ftree-loop-distribution -floop-strip-mine -
 endif
 KBUILD_CFLAGS	+= $(LTO_CFLAGS)
 LTO_LDFLAGS		:= $(LTO_CFLAGS) -Wno-lto-type-mismatch -Wno-psabi \
-				-Wno-stringop-overflow -flinker-output=nolto-rel
+				-Wno-stringop-overflow -Wno-stringop-overread \
+				-flinker-output=nolto-rel
 LDFINAL			:= $(CONFIG_SHELL) $(srctree)/scripts/gcc-ld $(LTO_LDFLAGS)
 AR				:= $(CROSS_COMPILE)gcc-ar
 NM				:= $(CROSS_COMPILE)gcc-nm

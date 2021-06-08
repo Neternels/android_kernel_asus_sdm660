@@ -46,9 +46,6 @@
 #include <linux/file.h>
 #include <linux/kthread.h>
 #include <linux/dma-buf.h>
-#ifdef CONFIG_MACH_ASUS_SDM660
-#include <linux/wakelock.h>
-#endif
 #include <linux/pm_qos.h>
 #include <sync.h>
 #include <sw_sync.h>
@@ -59,6 +56,11 @@
 #include "mdss_debug.h"
 #include "mdss_smmu.h"
 #include "mdss_mdp.h"
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 start*/
+#include <linux/wakelock.h>
+static struct wake_lock early_unblank_wakelock;
+extern bool lcd_suspend_flag;
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 end*/
 
 #include "mdss_livedisplay.h"
 
@@ -92,20 +94,6 @@
  */
 #define MDP_TIME_PERIOD_CALC_FPS_US	1000000
 
-#ifdef CONFIG_MACH_ASUS_SDM660
-#ifdef CONFIG_FOCALTECH_FP
-extern int focal_detect_flag;
-#endif
-
-#ifdef CONFIG_MACH_ASUS_X00TD
-static struct wake_lock early_unblank_wakelock;
-#endif
-extern bool lcd_suspend_flag;
-static void asus_lcd_early_unblank_func(struct work_struct *);
-static struct workqueue_struct *asus_lcd_early_unblank_wq;
-extern int g_resume_from_fp;
-#endif
-
 #define MDSS_BRIGHT_TO_BL_DIM(out, v) do {\
 			out = (12*v*v+1393*v+3060)/4465;\
 			} while (0)
@@ -114,6 +102,9 @@ module_param(backlight_dimmer, bool, 0644);
 
 int backlight_min = 0;
 module_param(backlight_min, int, 0644);
+
+static void asus_lcd_early_unblank_func(struct work_struct *);
+static struct workqueue_struct *asus_lcd_early_unblank_wq;
 
 static struct fb_info *fbi_list[MAX_FBI_LIST];
 static int fbi_list_index;
@@ -127,10 +118,6 @@ static u32 mdss_fb_pseudo_palette[16] = {
 
 static struct msm_mdp_interface *mdp_instance;
 
-#ifdef CONFIG_MACH_ASUS_X01BD
-static struct wake_lock early_unblank_wakelock;
-#endif
-
 static int mdss_fb_register(struct msm_fb_data_type *mfd);
 static int mdss_fb_open(struct fb_info *info, int user);
 static int mdss_fb_release(struct fb_info *info, int user);
@@ -140,9 +127,7 @@ static int mdss_fb_pan_display(struct fb_var_screeninfo *var,
 static int mdss_fb_check_var(struct fb_var_screeninfo *var,
 			     struct fb_info *info);
 static int mdss_fb_set_par(struct fb_info *info);
-#ifdef CONFIG_MACH_ASUS_SDM660
 static int mdss_fb_blank(int blank_mode, struct fb_info *info);
-#endif
 static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 			     int op_enable);
 static int mdss_fb_suspend_sub(struct msm_fb_data_type *mfd);
@@ -268,7 +253,8 @@ static int mdss_fb_notify_update(struct msm_fb_data_type *mfd,
 		mfd->update.ref_count++;
 		mutex_unlock(&mfd->update.lock);
 		ret = wait_for_completion_interruptible_timeout(
-						&mfd->update.comp, 4 * HZ);
+						&mfd->update.comp,
+						msecs_to_jiffies(4000));
 		mutex_lock(&mfd->update.lock);
 		mfd->update.ref_count--;
 		mutex_unlock(&mfd->update.lock);
@@ -291,7 +277,8 @@ static int mdss_fb_notify_update(struct msm_fb_data_type *mfd,
 		mfd->no_update.ref_count++;
 		mutex_unlock(&mfd->no_update.lock);
 		ret = wait_for_completion_interruptible_timeout(
-						&mfd->no_update.comp, 4 * HZ);
+						&mfd->no_update.comp,
+						msecs_to_jiffies(4000));
 		mutex_lock(&mfd->no_update.lock);
 		mfd->no_update.ref_count--;
 		mutex_unlock(&mfd->no_update.lock);
@@ -300,7 +287,8 @@ static int mdss_fb_notify_update(struct msm_fb_data_type *mfd,
 		if (mdss_fb_is_power_on(mfd)) {
 			reinit_completion(&mfd->power_off_comp);
 			ret = wait_for_completion_interruptible_timeout(
-						&mfd->power_off_comp, 1 * HZ);
+						&mfd->power_off_comp,
+						msecs_to_jiffies(1000));
 		}
 	}
 
@@ -1023,19 +1011,12 @@ static void mdss_fb_remove_sysfs(struct msm_fb_data_type *mfd)
 	sysfs_remove_group(&mfd->fbi->dev->kobj, &mdss_fb_attr_group);
 }
 
-#ifdef CONFIG_MACH_ASUS_X01BD
-bool shutdown_flag = 0;
-#endif
-
 static void mdss_fb_shutdown(struct platform_device *pdev)
 {
 	struct msm_fb_data_type *mfd = platform_get_drvdata(pdev);
 
 	mfd->shutdown_pending = true;
 
-#ifdef CONFIG_MACH_ASUS_X01BD
-	shutdown_flag = 1;
-#endif
 	/* wake up threads waiting on idle or kickoff queues */
 	wake_up_all(&mfd->idle_wait_q);
 	wake_up_all(&mfd->kickoff_wait_q);
@@ -1458,10 +1439,8 @@ static int mdss_fb_probe(struct platform_device *pdev)
 			pr_err("failed to register input handler\n");
 
 	INIT_DELAYED_WORK(&mfd->idle_notify_work, __mdss_fb_idle_notify_work);
-#ifdef CONFIG_MACH_ASUS_X01BD
 	INIT_DELAYED_WORK(&mfd->early_unblank_work, asus_lcd_early_unblank_func);
 	mfd->early_unblank_work_queued = false;
-#endif
 
 	return rc;
 }
@@ -1672,12 +1651,11 @@ static int mdss_fb_resume(struct platform_device *pdev)
 #endif
 
 #ifdef CONFIG_PM_SLEEP
-#ifdef CONFIG_MACH_ASUS_SDM660
 static void asus_lcd_early_unblank_func(struct work_struct *work)
 {
 	struct delayed_work *dw = to_delayed_work(work);
 	struct msm_fb_data_type *mfd = container_of(dw, struct msm_fb_data_type,
-							early_unblank_work);
+			early_unblank_work);
 	struct fb_info *fbi;
 
 	if (!mfd) {
@@ -1688,42 +1666,40 @@ static void asus_lcd_early_unblank_func(struct work_struct *work)
 	fbi = mfd->fbi;
 	if (!fbi)
 		return;
-
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 start*/
 	wake_lock_timeout(&early_unblank_wakelock,msecs_to_jiffies(300));
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 end*/
+	printk("[Display] Early unblank func +++ \n");
 	fb_blank(fbi, FB_BLANK_UNBLANK);
+	printk("[Display] Early unblank func --- \n");
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 start*/
 	lcd_suspend_flag = false;
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 end*/
+
 	mfd->early_unblank_work_queued = false;
 }
-#endif
 
 static int mdss_fb_pm_suspend(struct device *dev)
 {
 	struct msm_fb_data_type *mfd = dev_get_drvdata(dev);
 	int rc = 0;
-#ifdef CONFIG_MACH_ASUS_SDM660
 	struct fb_info *fbi;
-#endif
 
 	if (!mfd)
 		return -ENODEV;
 
-#ifdef CONFIG_MACH_ASUS_SDM660
 	fbi = mfd->fbi;
 	if (!fbi)
 		return -ENODEV;
-
-	if (
-#ifdef CONFIG_FOCALTECH_FP
-	focal_detect_flag == 0 &&
-#endif
-	mfd->index == 0) {
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 start*/
+	if (mfd->index == 0) {
 		if(lcd_suspend_flag == false) {
-			pr_debug("[Display] display suspend, blank display.\n");
+			printk("[Display] display suspend, blank display.\n");
 			fb_blank(fbi, FB_BLANK_POWERDOWN);
 			lcd_suspend_flag = true;
 		}
 	}
-#endif
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 end*/
 	dev_dbg(dev, "display pm suspend\n");
 
 	rc = mdss_fb_suspend_sub(mfd);
@@ -1748,9 +1724,7 @@ static int mdss_fb_pm_suspend(struct device *dev)
 static int mdss_fb_pm_resume(struct device *dev)
 {
 	struct msm_fb_data_type *mfd = dev_get_drvdata(dev);
-#ifdef CONFIG_MACH_ASUS_SDM660
 	int rc = 0;
-#endif
 	if (!mfd)
 		return -ENODEV;
 
@@ -1768,36 +1742,19 @@ static int mdss_fb_pm_resume(struct device *dev)
 	if (mfd->mdp.footswitch_ctrl)
 		mfd->mdp.footswitch_ctrl(true);
 
-#ifdef CONFIG_MACH_ASUS_SDM660
 	rc = mdss_fb_resume_sub(mfd);
 
-#ifdef CONFIG_MACH_ASUS_X00TD
-		if (g_resume_from_fp && mfd->index == 0) {
-			if (!mfd->early_unblank_work_queued) {
-				pr_err("[Display] doing unblank from resume, due to fp.\n");
-				mfd->early_unblank_work_queued = true;
-                queue_delayed_work(asus_lcd_early_unblank_wq, &mfd->early_unblank_work, 0);
-			} else {
-				pr_err("[Display] mfd->early_unblank_work_queued returns true.\n");
+	if (mfd->index == 0) {
+		if (!mfd->early_unblank_work_queued) {
+			printk("[Display] doing unblank from resume, due to fp.\n");
+			mfd->early_unblank_work_queued = true;
+			queue_delayed_work(asus_lcd_early_unblank_wq, &mfd->early_unblank_work, 0);
+		} else {
+			printk("[Display] mfd->early_unblank_work_queued returns true.\n");
 		}
 	}
-#endif
 
-#ifdef CONFIG_FOCALTECH_FP
-	if (focal_detect_flag == 0) {
-		if (g_resume_from_fp && mfd->index == 0) {
-			if (!mfd->early_unblank_work_queued) {
-				pr_err("[Display] doing unblank from resume, due to fp.\n");
-				mfd->early_unblank_work_queued = true;
-			} else
-				pr_err("[Display] mfd->early_unblank_work_queued returns true.\n");
-		}
-	}
-#endif
 	return rc;
-#else
-	return mdss_fb_resume_sub(mfd);
-#endif
 }
 #endif
 
@@ -1945,7 +1902,7 @@ static int mdss_fb_start_disp_thread(struct msm_fb_data_type *mfd)
 	mdss_fb_get_split(mfd);
 
 	atomic_set(&mfd->commits_pending, 0);
-	mfd->disp_thread = kthread_run(__mdss_fb_display_thread,
+	mfd->disp_thread = kthread_run_perf_critical(__mdss_fb_display_thread,
 				mfd, "mdss_fb%d", mfd->index);
 
 	if (IS_ERR(mfd->disp_thread)) {
@@ -2009,11 +1966,11 @@ static int mdss_fb_blank_blank(struct msm_fb_data_type *mfd,
 
 	cur_power_state = mfd->panel_power_state;
 
-	pr_debug("Transitioning from %d --> %d\n", cur_power_state,
+	printk("[Display] Transitioning from %d --> %d\n", cur_power_state,
 		req_power_state);
 
 	if (cur_power_state == req_power_state) {
-		pr_debug("No change in power state\n");
+		printk("[Display] No change in power state, return 0\n");
 		return 0;
 	}
 
@@ -2186,7 +2143,7 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 
 	switch (blank_mode) {
 	case FB_BLANK_UNBLANK:
-		pr_debug("unblank called. cur pwr state=%d\n", cur_power_state);
+		printk("[Display] unblank called. cur pwr state=%d\n", cur_power_state);
 		ret = mdss_fb_blank_unblank(mfd);
 		break;
 	case BLANK_FLAG_ULP:
@@ -2201,7 +2158,7 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 		break;
 	case BLANK_FLAG_LP:
 		req_power_state = MDSS_PANEL_POWER_LP1;
-		pr_debug(" power mode requested\n");
+		printk("[Display] low power mode requested\n");
 
 		/*
 		 * If low power mode is requested when panel is already off,
@@ -2220,7 +2177,7 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 	case FB_BLANK_POWERDOWN:
 	default:
 		req_power_state = MDSS_PANEL_POWER_OFF;
-		pr_debug("blank powerdown called\n");
+		printk("[Display] blank powerdown called\n");
 		ret = mdss_fb_blank_blank(mfd, req_power_state);
 		break;
 	}
@@ -4825,7 +4782,10 @@ static int __mdss_fb_atomic_commit_ioctl(struct fb_info *info,
 	if (!mfd)
 		return -EINVAL;
 
+
 	mdp5_data = mfd_to_mdp5_data(mfd);
+
+
 
 	if (mfd->panel_info->panel_dead) {
 		pr_debug("early commit return\n");
@@ -4839,10 +4799,11 @@ static int __mdss_fb_atomic_commit_ioctl(struct fb_info *info,
 			mfd->mdp.signal_retire_fence && mdp5_data)
 			mfd->mdp.signal_retire_fence(mfd,
 						mdp5_data->retire_cnt);
-#ifndef CONFIG_MACH_ASUS_SDM660
-		return 0;
-#endif
+/* Huaqin modify for ZQL1650 by xieguoqiang at 2018/02/09 start */
+		//return 0;
+/* Huaqin modify for ZQL1650 by xieguoqiang at 2018/02/09 end */
 	}
+
 
 	output_layer_user = commit.commit_v1.output_layer;
 	if (output_layer_user) {
@@ -5395,11 +5356,10 @@ int __init mdss_fb_init(void)
 	if (platform_driver_register(&mdss_fb_driver))
 		return rc;
 
-#ifdef CONFIG_MACH_ASUS_SDM660
 	asus_lcd_early_unblank_wq = create_singlethread_workqueue("display_early_wq");
-	wake_lock_init(&early_unblank_wakelock, WAKE_LOCK_SUSPEND,
-			"early_unblank-update");
-#endif
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 start*/
+	wake_lock_init(&early_unblank_wakelock, WAKE_LOCK_SUSPEND, "early_unblank-update");
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 end*/
 	return 0;
 }
 

@@ -336,6 +336,15 @@
 
 #define KEY_MICMUTE		248	/* Mute / unmute the microphone */
 
+#if defined(CONFIG_MACH_ASUS_X00TD) && (defined(CONFIG_TOUCHSCREEN_NT36xxx) || defined(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_v27))
+#define KEY_TP_GESTURE_C 	249
+#define KEY_TP_GESTURE_E 	250
+#define KEY_TP_GESTURE_S 	251
+#define KEY_TP_GESTURE_V 	252
+#define KEY_TP_GESTURE_W 	253
+#define KEY_TP_GESTURE_Z 	254
+#endif
+
 /* Code 255 is reserved for special needs of AT keyboard driver */
 
 #define BTN_MISC		0x100
@@ -663,25 +672,9 @@
 #define BTN_TRIGGER_HAPPY39		0x2e6
 #define BTN_TRIGGER_HAPPY40		0x2e7
 
-#ifdef CONFIG_MACH_ASUS_SDM660
-#define KEY_TP_GESTURE_C		748
-#define KEY_TP_GESTURE_E		749
-#define KEY_TP_GESTURE_M		750
-#define KEY_TP_GESTURE_O		751
-#define KEY_TP_GESTURE_S		752
-#define KEY_TP_GESTURE_V		753
-#define KEY_TP_GESTURE_W		754
-#define KEY_TP_GESTURE_Z		755
-#define KEY_TP_GESTURE_SWIPE_UP		756
-#define KEY_TP_GESTURE_SWIPE_DOWN	757
-#define KEY_TP_GESTURE_SWIPE_LEFT	758
-#define KEY_TP_GESTURE_SWIPE_RIGHT	759
-#endif
-
-#ifdef CONFIG_MACH_ASUS_X00TD
+/* Sar Sensor KeyCodes */
 #define KEY_SARSENSOR_NEAR		0x2ea
 #define KEY_SARSENSOR_FAR		0x2eb
-#endif
 
 /* We avoid low common keys in module aliases so they don't get huge. */
 #define KEY_MIN_INTERESTING	KEY_MUTE

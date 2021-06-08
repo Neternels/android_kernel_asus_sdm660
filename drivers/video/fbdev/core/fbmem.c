@@ -1091,9 +1091,9 @@ fb_blank(struct fb_info *info, int blank)
 }
 EXPORT_SYMBOL(fb_blank);
 
-#ifdef CONFIG_MACH_ASUS_SDM660
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 start*/
 bool lcd_suspend_flag = false;
-#endif
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 end*/
 
 static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg, struct file *file)
@@ -1224,12 +1224,12 @@ static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			return -ENODEV;
 		}
 		info->flags |= FBINFO_MISC_USEREVENT;
-#ifdef CONFIG_MACH_ASUS_SDM660
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 start*/
 		if (arg == FB_BLANK_POWERDOWN) {
 			lcd_suspend_flag = true;
-			pr_debug("[Display] FB_BLANK_POWERDOWN\n");
+			printk("[Display] FB_BLANK_POWERDOWN\n");
 		}
-#endif
+/* Huaqin modify for No repetition lcd suspend by qimaokang at 2018/12/07 end*/
 		ret = fb_blank(info, arg);
 		info->flags &= ~FBINFO_MISC_USEREVENT;
 		unlock_fb_info(info);
