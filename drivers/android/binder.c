@@ -548,7 +548,7 @@ struct binder_proc {
 	int pid;
 	struct task_struct *tsk;
 	struct files_struct *files;
-	struct mutex files_lock;
+	const struct cred *cred;
 	struct hlist_node deferred_work_node;
 	int deferred_work;
 	bool is_dead;
@@ -3224,7 +3224,7 @@ static void binder_transaction(struct binder_proc *proc,
 		t->from = thread;
 	else
 		t->from = NULL;
-	t->sender_euid = task_euid(proc->tsk);
+	t->sender_euid = proc->cred->euid;
 	t->to_proc = target_proc;
 	t->to_thread = target_thread;
 	t->code = tr->code;
@@ -5236,7 +5236,7 @@ static int binder_open(struct inode *nodp, struct file *filp)
 	spin_lock_init(&proc->outer_lock);
 	get_task_struct(current->group_leader);
 	proc->tsk = current->group_leader;
-	mutex_init(&proc->files_lock);
+	proc->cred = get_cred(filp->f_cred);
 	INIT_LIST_HEAD(&proc->todo);
 	if (binder_supported_policy(current->policy)) {
 		proc->default_priority.sched_policy = current->policy;
@@ -5462,8 +5462,54 @@ static void binder_deferred_release(struct binder_proc *proc)
 	}
 	binder_proc_unlock(proc);
 
-	binder_release_work(proc, &proc->todo);
-	binder_release_work(proc, &proc->delivered_death);
+	binder_release_work(&proc->todo);
+	binder_release_work(&proc->delivered_death);
+
+	buffers = 0;
+	while ((n = rb_first(&proc->allocated_buffers))) {
+		struct binder_buffer *buffer;
+
+		buffer = rb_entry(n, struct binder_buffer, rb_node);
+
+		t = buffer->transaction;
+		if (t) {
+			t->buffer = NULL;
+			buffer->transaction = NULL;
+			pr_err("release proc %d, transaction %d, not freed\n",
+			       proc->pid, t->debug_id);
+			/*BUG();*/
+		}
+
+		binder_free_buf(proc, buffer);
+		buffers++;
+	}
+
+	binder_stats_deleted(BINDER_STAT_PROC);
+
+	page_count = 0;
+	if (proc->pages) {
+		int i;
+
+		for (i = 0; i < proc->buffer_size / PAGE_SIZE; i++) {
+			void *page_addr;
+
+			if (!proc->pages[i])
+				continue;
+
+			page_addr = proc->buffer + i * PAGE_SIZE;
+			binder_debug(BINDER_DEBUG_BUFFER_ALLOC,
+				     "%s: %d: page %d at %pK not freed\n",
+				     __func__, proc->pid, i, page_addr);
+			unmap_kernel_range((unsigned long)page_addr, PAGE_SIZE);
+			__free_page(proc->pages[i]);
+			page_count++;
+		}
+		kfree(proc->pages);
+		vfree(proc->buffer);
+	}
+
+	put_task_struct(proc->tsk);
+	put_cred(proc->cred);
 
 	binder_debug(BINDER_DEBUG_OPEN_CLOSE,
 		     "%s: %d threads %d, nodes %d (ref %d), refs %d, active transactions %d\n",
